@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KINETIX 3D — Интерактивный атлас упражнений</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js для 3D-визуализации -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Шрифт Inter и JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        neon: {
+                            lime: '#CCFF00',
+                            cyan: '#00F0FF',
+                            red: '#FF2A5F',
+                            amber: '#FFB800'
+                        },
+                        dark: {
+                            950: '#07080A',
+                            900: '#0D0F12',
+                            850: '#13161B',
+                            800: '#191D24',
+                            700: '#262C36'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #07080A;
+            color: #F3F4F6;
+            overflow-x: hidden;
+        }
+
+        /* Кастомный скроллбар */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0D0F12;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #262C36;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #CCFF00;
+        }
+
+        /* Неоновые эффекты и сетка */
+        .bg-tech-grid {
+            background-size: 32px 32px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+
+        .card-glow {
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .card-glow:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 30px -10px rgba(204, 255, 0, 0.15), 0 0 0 1px rgba(204, 255, 0, 0.4);
+        }
+
+        /* Пульсация целевых мышц на SVG */
+        @keyframes pulse-primary {
+            0%, 100% { fill: #FF2A5F; filter: drop-shadow(0 0 8px rgba(255, 42, 95, 0.8)); opacity: 0.95; }
+            50% { fill: #FF557E; filter: drop-shadow(0 0 14px rgba(255, 42, 95, 1)); opacity: 1; }
+        }
+        @keyframes pulse-secondary {
+            0%, 100% { fill: #FFB800; filter: drop-shadow(0 0 5px rgba(255, 184, 0, 0.5)); opacity: 0.75; }
+            50% { fill: #FFCC4D; filter: drop-shadow(0 0 8px rgba(255, 184, 0, 0.8)); opacity: 0.9; }
+        }
+
+        .muscle-primary {
+            animation: pulse-primary 2s infinite ease-in-out;
+        }
+        .muscle-secondary {
+            animation: pulse-secondary 2.5s infinite ease-in-out;
+        }
+        .muscle-inactive {
+            fill: #222731;
+            transition: fill 0.3s ease;
+        }
+
+        /* Анимация биомеханики в карточках */
+        @keyframes bench-bar {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(22px); }
+        }
+        @keyframes squat-body {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(18px); }
+        }
+        .anim-bench { animation: bench-bar 2.4s infinite ease-in-out; }
+        .anim-squat { animation: squat-body 2.6s infinite ease-in-out; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans selection:bg-neon-lime selection:text-dark-950">
+
+    <!-- Верхняя навигационная панель -->
+    <header class="sticky top-0 z-30 backdrop-blur-xl bg-dark-950/85 border-b border-white/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
+            <!-- Логотип -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-neon-lime flex items-center justify-center text-dark-950 font-extrabold text-xl shadow-[0_0_20px_rgba(204,255,0,0.4)]">
+                    K3D
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold text-xl tracking-tight text-white">KINETIX</span>
+                        <span class="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-white/10 text-neon-lime border border-neon-lime/30">Biomech Atlas</span>
+                    </div>
+                    <p class="text-xs text-gray-400 hidden sm:block">Интерактивный 3D-каталог упражнений и анатомии</p>
+                </div>
+            </div>
+
+            <!-- Легенда подсветки мышц -->
+            <div class="hidden md:flex items-center gap-5 bg-dark-850 px-4 py-2 rounded-xl border border-white/5 text-xs">
+                <div class="flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-neon-red shadow-[0_0_10px_#FF2A5F] inline-block"></span>
+                    <span class="text-gray-300">Целевая мышца (Primary)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-3 h-3 rounded-full bg-neon-amber shadow-[0_0_8px_#FFB800] inline-block"></span>
+                    <span class="text-gray-300">Синергисты (Secondary)</span>
+                </div>
+            </div>
+
+            <!-- Переключатель вида превью -->
+            <div class="flex items-center gap-2 bg-dark-850 p-1 rounded-xl border border-white/10">
+                <button id="viewModeBiomech" onclick="setCardViewMode('biomech')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-neon-lime text-dark-950 shadow-sm">
+                    3D Движение
+                </button>
+                <button id="viewModeAnatomy" onclick="setCardViewMode('anatomy')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-gray-400 hover:text-white">
+                    Анатомия
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Главный блок управления и фильтрации -->
+    <section class="relative border-b border-white/5 bg-dark-900/60 bg-tech-grid py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-6">
+                <div>
+                    <h1 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                        Атлас биомеханики упражнений
+                    </h1>
+                    <p class="text-gray-400 text-sm sm:text-base mt-1 max-w-2xl">
+                        Выберите целевую мышечную группу или найдите упражнение. Нажмите на любую карточку, чтобы открыть интерактивную 3D-модель с регулировкой ракурса, техникой и разбором ошибок.
+                    </p>
+                </div>
+
+                <!-- Поисковая строка -->
+                <div class="relative w-full lg:w-80">
+                    <svg class="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <input 
+                        type="text" 
+                        id="searchInput"
+                        placeholder="Поиск (например: жим, присед, тяга)..." 
+                        class="w-full pl-11 pr-9 py-2.5 bg-dark-850 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 focus:outline-none focus:border-neon-lime focus:ring-1 focus:ring-neon-lime transition-all"
+                    >
+                    <button id="clearSearchBtn" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
+                        ✕
+                    </button>
+                </div>
+            </div>
+
+            <!-- Панель фильтров по мышечным группам + счетчик -->
+            <div class="flex flex-wrap items-center justify-between gap-4 pt-2">
+                <div id="filterContainer" class="flex flex-wrap items-center gap-2">
+                    <!-- Генерируется через JS -->
+                </div>
+
+                <div class="flex items-center gap-2 text-xs font-mono text-gray-400 bg-dark-850 px-3.5 py-2 rounded-xl border border-white/5">
+                    <span>Найдено упражнений:</span>
+                    <span id="exerciseCount" class="text-neon-lime font-bold text-sm">0</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Сетка карточек упражнений -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div id="exercisesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Карточки рендерятся динамически -->
+        </div>
+
+        <!-- Пустое состояние при поиске -->
+        <div id="emptyState" class="hidden py-20 text-center">
+            <div class="w-16 h-16 rounded-2xl bg-dark-850 border border-white/10 flex items-center justify-center mx-auto mb-4 text-gray-500">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-1">Упражнения не найдены</h3>
+            <p class="text-sm text-gray-400 mb-6">Попробуйте изменить поисковый запрос или сбросить фильтр мышечной группы.</p>
+            <button onclick="resetFilters()" class="px-4 py-2 rounded-xl bg-neon-lime text-dark-950 font-semibold text-sm hover:brightness-110 transition">
+                Сбросить фильтры
+            </button>
+        </div>
+    </main>
+
+    <!-- Футер -->
+    <footer class="border-t border-white/5 bg-dark-900 py-6 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 gap-4">
+            <p>KINETIX 3D Atlas — Интерактивная визуализация целевых мышечных групп и техники выполнения.</p>
+            <p class="font-mono">Управляйте 3D-камерой мышью или касанием внутри карточки упражнения</p>
+        </div>
+    </footer>
+
+    <!-- МОДАЛЬНОЕ ОКНО С 3D-ВЬЮВЕРОМ И ДЕТАЛЯМИ -->
+    <div id="exerciseModal" class="fixed inset-0 z-50 hidden items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto bg-black/80 backdrop-blur-md transition-opacity">
+        <!-- Контейнер модалки -->
+        <div id="modalDialog" class="relative w-full max-w-6xl bg-dark-900 border border-white/15 rounded-2xl shadow-2xl overflow-hidden my-auto max-h-[94vh] flex flex-col">
+            
+            <!-- Шапка модального окна -->
+            <div class="flex items-center justify-between px-5 py-4 bg-dark-850 border-b border-white/10 shrink-0">
+                <div class="flex flex-wrap items-center gap-3">
+                    <span id="modalCategoryBadge" class="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider bg-neon-lime text-dark-950">
+                        Грудь
+                    </span>
+                    <div>
+                        <h2 id="modalTitleRu" class="text-lg sm:text-xl font-extrabold text-white leading-tight">
+                            Жим штанги лежа
+                        </h2>
+                        <p id="modalTitleEn" class="text-xs font-mono text-gray-400">
+                            Barbell Bench Press
+                        </p>
+                    </div>
+                </div>
+
+                <button onclick="closeModal()" class="w-9 h-9 rounded-xl bg-dark-800 hover:bg-neon-red hover:text-white text-gray-400 flex items-center justify-center transition-colors border border-white/10" title="Закрыть (Esc)">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Тело модального окна -->
+            <div class="overflow-y-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Левая колонка: Интерактивный 3D-Вьювер + Анатомическая карта (5 колонок на десктопе) -->
+                <div class="lg:col-span-5 flex flex-col gap-4">
+                    
+                    <!-- 3D Canvas Контейнер -->
+                    <div class="relative rounded-2xl overflow-hidden bg-dark-950 border border-white/10 h-72 sm:h-80 flex flex-col">
+                        <!-- Верхний оверлей 3D сцены -->
+                        <div class="absolute top-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-none">
+                            <span class="px-2.5 py-1 rounded-md bg-dark-900/90 border border-white/10 text-[11px] font-mono text-neon-cyan flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-neon-cyan animate-ping"></span>
+                                LIVE 3D BIOMECHANICS
+                            </span>
+                            <span class="px-2.5 py-1 rounded-md bg-dark-900/90 border border-white/10 text-[11px] text-gray-300">
+                                🖱️ Вращение 360°
+                            </span>
+                        </div>
+
+                        <!-- Сам Canvas для Three.js -->
+                        <div id="threeContainer" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+                        <!-- Панель управления 3D-анимацией -->
+                        <div class="absolute bottom-3 left-3 right-3 z-10 flex items-center justify-between gap-2 bg-dark-900/90 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10">
+                            <div class="flex items-center gap-1.5">
+                                <button id="toggle3dPlayBtn" onclick="toggle3DPlayback()" class="px-2.5 py-1 rounded-lg bg-neon-lime text-dark-950 font-bold text-xs hover:brightness-110 transition">
+                                    Пауза
+                                </button>
+                                <button onclick="set3DSpeed(0.5)" id="speedSlowBtn" class="px-2 py-1 rounded-lg bg-dark-800 text-gray-300 hover:text-white text-xs font-mono transition">
+                                    0.5x
+                                </button>
+                                <button onclick="set3DSpeed(1)" id="speedNormBtn" class="px-2 py-1 rounded-lg bg-white/15 text-white text-xs font-mono transition">
+                                    1x
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <button onclick="setCameraPreset('front')" class="px-2 py-1 rounded bg-dark-800 hover:bg-dark-700 text-[11px] text-gray-300">Спереди</button>
+                                <button onclick="setCameraPreset('side')" class="px-2 py-1 rounded bg-dark-800 hover:bg-dark-700 text-[11px] text-gray-300">Сбоку</button>
+                                <button onclick="setCameraPreset('iso')" class="px-2 py-1 rounded bg-dark-800 hover:bg-dark-700 text-[11px] text-gray-300">3/4</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Карта вовлеченных мышц и анатомическая подсветка -->
+                    <div class="bg-dark-850 border border-white/10 rounded-2xl p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-xs font-mono uppercase tracking-wider text-gray-400">Анатомическая карта нагрузки</h3>
+                            <span id="modalEquipment" class="text-xs px-2.5 py-0.5 rounded bg-white/5 text-gray-300 border border-white/10">Штанга</span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                            <!-- Векторный силуэт человека спереди/сзади -->
+                            <div id="modalAnatomySvg" class="bg-dark-950 rounded-xl p-3 border border-white/5 flex items-center justify-center h-48">
+                                <!-- Подставляется через JS -->
+                            </div>
+
+                            <!-- Списки мышц -->
+                            <div class="space-y-3 text-sm">
+                                <div>
+                                    <div class="flex items-center gap-1.5 text-xs font-semibold text-neon-red mb-1">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-neon-red inline-block"></span>
+                                        Целевая группа (Primary):
+                                    </div>
+                                    <p id="modalPrimaryMuscle" class="font-bold text-white pl-4"></p>
+                                </div>
+
+                                <div>
+                                    <div class="flex items-center gap-1.5 text-xs font-semibold text-neon-amber mb-1">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-neon-amber inline-block"></span>
+                                        Синергисты и стабилизаторы:
+                                    </div>
+                                    <ul id="modalSecondaryMuscles" class="pl-4 space-y-1 text-xs text-gray-300"></ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Правая колонка: Пошаговая техника, Дыхание, Частые ошибки (7 колонок на десктопе) -->
+                <div class="lg:col-span-7 flex flex-col gap-5">
+                    
+                    <!-- Блок 1: Пошаговая техника выполнения -->
+                    <div class="bg-dark-850 border border-white/10 rounded-2xl p-5">
+                        <div class="flex items-center gap-2.5 mb-4">
+                            <div class="w-7 h-7 rounded-lg bg-neon-lime/15 border border-neon-lime/40 flex items-center justify-center text-neon-lime font-bold text-sm">
+                                01
+                            </div>
+                            <h3 class="text-base font-bold text-white uppercase tracking-wide">Пошаговая техника выполнения</h3>
+                        </div>
+
+                        <div id="modalSteps" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <!-- Генерируется через JS: Исходное положение, Фаза движения, Пиковое сокращение, Возврат -->
+                        </div>
+                    </div>
+
+                    <!-- Блок 2: Паттерн дыхания -->
+                    <div class="bg-gradient-to-r from-cyan-950/40 via-dark-850 to-dark-850 border border-neon-cyan/30 rounded-2xl p-5">
+                        <div class="flex items-center gap-2.5 mb-3">
+                            <div class="w-7 h-7 rounded-lg bg-neon-cyan/15 border border-neon-cyan/40 flex items-center justify-center text-neon-cyan">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-base font-bold text-white uppercase tracking-wide">Паттерн дыхания</h3>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="bg-dark-950/70 border border-white/5 rounded-xl p-3.5">
+                                <span class="text-[11px] font-mono uppercase text-neon-cyan block mb-1">↓ Фаза вдоха (Inhale)</span>
+                                <p id="modalBreathIn" class="text-sm text-gray-200"></p>
+                            </div>
+                            <div class="bg-dark-950/70 border border-white/5 rounded-xl p-3.5">
+                                <span class="text-[11px] font-mono uppercase text-neon-lime block mb-1">↑ Фаза выдоха (Exhale)</span>
+                                <p id="modalBreathOut" class="text-sm text-gray-200"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Блок 3: Частые ошибки -->
+                    <div class="bg-gradient-to-r from-rose-950/30 via-dark-850 to-dark-850 border border-neon-red/30 rounded-2xl p-5">
+                        <div class="flex items-center gap-2.5 mb-3">
+                            <div class="w-7 h-7 rounded-lg bg-neon-red/15 border border-neon-red/40 flex items-center justify-center text-neon-red font-bold">
+                                !
+                            </div>
+                            <h3 class="text-base font-bold text-white uppercase tracking-wide">Частые ошибки (Чего избегать)</h3>
+                        </div>
+
+                        <ul id="modalMistakes" class="space-y-2.5 text-sm text-gray-300">
+                            <!-- Генерируется через JS -->
+                        </ul>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* =========================================================================
+           1. БАЗА ДАННЫХ УПРАЖНЕНИЙ (9 полноформатных упражнений по всем категориям)
+           ========================================================================= */
+        const categories = [
+            { id: 'all', name: 'Все упражнения' },
+            { id: 'chest', name: 'Грудь' },
+            { id: 'back', name: 'Спина' },
+            { id: 'legs', name: 'Ноги' },
+            { id: 'shoulders', name: 'Плечи' },
+            { id: 'arms', name: 'Руки' },
+            { id: 'core', name: 'Пресс / Кор' }
+        ];
+
+        const exercises = [
+            {
+                id: 'bench-press',
+                titleRu: 'Жим штанги лежа на горизонтальной скамье',
+                titleEn: 'Barbell Bench Press',
+                category: 'chest',
+                categoryName: 'Грудь',
+                equipment: 'Штанга, скамья',
+                difficulty: 'Базовое',
+                animationType: 'bench',
+                primaryMuscle: 'Большая грудная мышца (средний и нижний пучки)',
+                secondaryMuscles: ['Передняя дельта', 'Трицепс (разгибатель предплечья)', 'Зубчатые мышцы'],
+                activeSvgZones: {
+                    primary: ['chest'],
+                    secondary: ['shoulders', 'triceps']
+                },
+                steps: {
+                    setup: 'Лягте на скамью, глаза строго под грифом. Сведите лопатки, создайте умеренный прогиб в грудном отделе и плотно упритесь всей стопой в пол.',
+                    movement: 'Снимите штангу со стоек и подконтрольно опускайте гриф к нижней части груди (линия сосков), удерживая угол между плечом и корпусом около 45–75°.',
+                    peak: 'В нижней точке слегка коснитесь груди грифом без отбива, сохраняя напряжение в грудных мышцах и сведенные лопатки.',
+                    returnPhase: 'Мощным движением выжмите штангу вверх по легкой дуге к уровню глаз, не разгибая локти «в замок» в верхней точке.'
+                },
+                breathing: {
+                    inhale: 'Глубокий вдох носом при опускании штанги вниз (эксцентрическая фаза).',
+                    exhale: 'Мощный выдох ртом после прохождения самой сложной точки подъема («мертвой точки»).'
+                },
+                mistakes: [
+                    'Разведение локтей строго под 90° в стороны — перегружает плечевой сустав и связки ротаторной манжеты.',
+                    'Отбив штанги от грудной клетки вместо подконтрольной паузы в нижней точке.',
+                    'Отрыв таза и стоп от пола во время жима (снижает стабильность и повышает риск травмы поясницы).'
+                ]
+            },
+            {
+                id: 'incline-db-press',
+                titleRu: 'Жим гантелей на наклонной скамье (30°)',
+                titleEn: 'Incline Dumbbell Press',
+                category: 'chest',
+                categoryName: 'Грудь',
+                equipment: 'Гантели, скамья 30°',
+                difficulty: 'Средний',
+                animationType: 'incline',
+                primaryMuscle: 'Верхний (ключичный) отдел большой грудной мышцы',
+                secondaryMuscles: ['Передние пучки дельтовидных мышц', 'Трицепс'],
+                activeSvgZones: {
+                    primary: ['chest'],
+                    secondary: ['shoulders', 'triceps']
+                },
+                steps: {
+                    setup: 'Установите угол спинки скамьи 30°. Сядьте, закиньте гантели бедрами к плечам и прижмите лопатки к спинке.',
+                    movement: 'Опускайте гантели по широкой амплитуде до уровня верха груди, предплечья остаются строго перпендикулярны полу.',
+                    peak: 'Почувствуйте глубокое растяжение верхнего пучка грудных мышц в нижней точке без провала локтей слишком глубоко назад.',
+                    returnPhase: 'Выжмите гантели вверх по сходящейся траектории, не соударяя их друг о друга в верхней точке.'
+                },
+                breathing: {
+                    inhale: 'Плавный вдох во время опускания гантелей и растяжения грудных мышц.',
+                    exhale: 'Выдох на усилии при сведении гантелей вверх.'
+                },
+                mistakes: [
+                    'Слишком высокий угол наклона скамьи (45° и выше), из-за чего нагрузку забирают передние дельты.',
+                    'Сведение и удар гантелей друг о друга вверху — теряется постоянное напряжение в мышце.',
+                    'Заваливание кистей назад и потеря вертикальности предплечий.'
+                ]
+            },
+            {
+                id: 'lat-pulldown',
+                titleRu: 'Вертикальная тяга верхнего блока к груди',
+                titleEn: 'Wide-Grip Lat Pulldown',
+                category: 'back',
+                categoryName: 'Спина',
+                equipment: 'Блочный тренажер',
+                difficulty: 'Базовое',
+                animationType: 'pulldown',
+                primaryMuscle: 'Широчайшие мышцы спины и большая круглая мышца',
+                secondaryMuscles: ['Бицепс и брахиалис', 'Ромбовидные и трапециевидные мышцы', 'Задняя дельта'],
+                activeSvgZones: {
+                    primary: ['lats'],
+                    secondary: ['biceps', 'traps', 'shoulders']
+                },
+                steps: {
+                    setup: 'Возьмитесь за рукоять хватом чуть шире плеч, зафиксируйте бедра под валиками. Слегка отклоните корпус назад (на 10–15°) и прогните грудной отдел.',
+                    movement: 'Начните движение с опускания плеч и лопаток вниз (депрессия лопаток), затем тяните локти вниз и вдоль корпуса.',
+                    peak: 'Опустите рукоять к ключицам, максимально сводя лопатки и направляя локти к тазу в нижней точке.',
+                    returnPhase: 'Подконтрольно верните рукоять вверх до полного растяжения широчайших, не бросая вес.'
+                },
+                breathing: {
+                    inhale: 'Вдох при плавном возвращении рукояти вверх и растяжении спины.',
+                    exhale: 'Выдох при тяге рукояти вниз к верху груди.'
+                },
+                mistakes: [
+                    'Сильное раскачивание корпусом назад и превращение упражнения в инерционную тягу всем телом.',
+                    'Тяга рукояти за голову — создает неестественную ротацию и опасную компрессию в плечевых суставах.',
+                    'Выполнение движения за счет сгибания рук (бицепса), когда лопатки остаются неподвижными.'
+                ]
+            },
+            {
+                id: 'barbell-row',
+                titleRu: 'Тяга штанги в наклоне к поясу',
+                titleEn: 'Bent-Over Barbell Row',
+                category: 'back',
+                categoryName: 'Спина',
+                equipment: 'Штанга',
+                difficulty: 'Продвинутый',
+                animationType: 'row',
+                primaryMuscle: 'Широчайшие мышцы спины, ромбовидные и середина трапеций',
+                secondaryMuscles: ['Разгибатели позвоночника (поясница)', 'Задняя дельта', 'Бицепс', 'Бицепс бедра (стабилизатор)'],
+                activeSvgZones: {
+                    primary: ['lats', 'traps'],
+                    secondary: ['lowerback', 'biceps', 'hamstrings']
+                },
+                steps: {
+                    setup: 'Поставьте стопы на ширине таза, отведите таз назад и наклоните корпус вперед под углом 30–45° к полу с идеально прямой спиной.',
+                    movement: 'Тяните штангу вдоль бедер к нижней части живота, ведя локти строго назад за спину.',
+                    peak: 'Коснитесь грифом живота, сделайте секундную фиксацию с жестким сведением лопаток.',
+                    returnPhase: 'Плавно опустите штангу вниз по той же траектории до выпрямления рук без округления поясницы.'
+                },
+                breathing: {
+                    inhale: 'Вдох при опускании штанги вниз.',
+                    exhale: 'Мощный выдох при подтягивании грифа к поясу.'
+                },
+                mistakes: [
+                    'Округление поясничного отдела позвоночника («горб») под весом штанги.',
+                    'Постепенное выпрямление корпуса во время подхода, превращающее тягу в шраги.',
+                    'Рывковый подъем штанги за счет разгибания ног и поясницы.'
+                ]
+            },
+            {
+                id: 'barbell-squat',
+                titleRu: 'Классические приседания со штангой на плечах',
+                titleEn: 'Barbell Back Squat',
+                category: 'legs',
+                categoryName: 'Ноги',
+                equipment: 'Штанга, силовая рама',
+                difficulty: 'Базовое',
+                animationType: 'squat',
+                primaryMuscle: 'Квадрицепс (четырехглавая мышца бедра) и большая ягодичная мышца',
+                secondaryMuscles: ['Приводящие мышцы бедра', 'Бицепс бедра', 'Разгибатели спины и мышцы кора'],
+                activeSvgZones: {
+                    primary: ['quads', 'glutes'],
+                    secondary: ['hamstrings', 'abs', 'lowerback']
+                },
+                steps: {
+                    setup: 'Расположите гриф на верхней части трапеций (не на шее!), стопы на ширине плеч, носки развернуты наружу на 15–30°.',
+                    movement: 'Сделайте вдох в живот (брейсинг) и одновременно сгибайте тазобедренные и коленные суставы, направляя колени строго по линии носков.',
+                    peak: 'Опуститесь до параллели бедер с полом (или чуть ниже при сохранении нейтрального таза без «клевков» поясницей).',
+                    returnPhase: 'Отталкиваясь всей стопой от пола, мощно разогните ноги и таз, одновременно поднимая грудь и таз с одинаковой скоростью.'
+                },
+                breathing: {
+                    inhale: 'Глубокий диафрагмальный вдох перед началом опускания и задержка дыхания в нижней точке для внутрибрюшного давления.',
+                    exhale: 'Выдох после прохождения самой тяжелой фазы подъема из нижней точки.'
+                },
+                mistakes: [
+                    'Заваливание коленей внутрь (вальгус) при вставании — критическая нагрузка на мениски и крестообразные связки.',
+                    'Отрыв пяток от пола и перенос центра тяжести на носки.',
+                    '«Гудморнинг-присед» — когда таз поднимается быстрее плеч, перекладывая всю нагрузку на поясницу.'
+                ]
+            },
+            {
+                id: 'romanian-deadlift',
+                titleRu: 'Румынская тяга со штангой',
+                titleEn: 'Romanian Deadlift (RDL)',
+                category: 'legs',
+                categoryName: 'Ноги',
+                equipment: 'Штанга или гантели',
+                difficulty: 'Базовое',
+                animationType: 'rdl',
+                primaryMuscle: 'Бицепс бедра (задняя поверхность) и ягодичные мышцы',
+                secondaryMuscles: ['Разгибатели позвоночника', 'Широчайшие мышцы спины (удержание грифа)', 'Предплечья'],
+                activeSvgZones: {
+                    primary: ['hamstrings', 'glutes'],
+                    secondary: ['lowerback', 'lats', 'forearms']
+                },
+                steps: {
+                    setup: 'Встаньте прямо со штангой в опущенных руках, стопы на ширине таза, колени слегка мягкие (согнуты на 10–15° и зафиксированы).',
+                    movement: 'Отводите таз максимально назад (как будто закрываете им дверь сзади), ведя гриф вплотную по передней поверхности бедер и голеней.',
+                    peak: 'Опускайте штангу до середины голени — ровно до тех пор, пока таз может двигаться назад без округления поясницы.',
+                    returnPhase: 'Мощным сокращением ягодиц и задней поверхности бедра подайте таз вперед и вернитесь в вертикальное положение.'
+                },
+                breathing: {
+                    inhale: 'Плавный вдох во время отведения таза назад и опускания штанги.',
+                    exhale: 'Выдох при разгибании тазобедренного сустава в верхнюю точку.'
+                },
+                mistakes: [
+                    'Отведение штанги далеко вперед от ног — многократно увеличивает рычаг давления на межпозвонковые диски.',
+                    'Опускание грифа до самого пола за счет сгибания поясницы вместо работы тазобедренного сустава.',
+                    'Переразгибание в пояснице назад в верхней точке амплитуды.'
+                ]
+            },
+            {
+                id: 'overhead-press',
+                titleRu: 'Армейский жим гантелей / штанги над головой',
+                titleEn: 'Overhead Shoulder Press',
+                category: 'shoulders',
+                categoryName: 'Плечи',
+                equipment: 'Гантели или штанга',
+                difficulty: 'Базовое',
+                animationType: 'ohp',
+                primaryMuscle: 'Передний и средний пучки дельтовидных мышц',
+                secondaryMuscles: ['Трицепс', 'Верхний отдел грудных', 'Верх трапеции и мышцы кора'],
+                activeSvgZones: {
+                    primary: ['shoulders'],
+                    secondary: ['triceps', 'traps', 'abs']
+                },
+                steps: {
+                    setup: 'Встаньте ровно или сядьте на скамью с вертикальной спинкой. Напрягите пресс и ягодицы, удерживая снаряды на уровне подбородка/плеч.',
+                    movement: 'Локти выведены слегка вперед на 30° относительно линии плеч (плоскость лопатки). Выжимайте вес строго вертикально вверх.',
+                    peak: 'В верхней точке снаряды находятся строго над плечевыми суставами и макушкой, не выключая локти полностью.',
+                    returnPhase: 'Подконтрольно опустите вес в исходное положение к уровню плеч без рывков.'
+                },
+                breathing: {
+                    inhale: 'Вдох при подконтрольном опускании веса к плечам.',
+                    exhale: 'Выдох в верхней половине жима над головой.'
+                },
+                mistakes: [
+                    'Чрезмерный прогиб в пояснице назад, превращающий жим на плечи в наклонный жим грудью с риском для позвоночника.',
+                    'Укороченная амплитуда (опускание только до уровня лба вместо уровня ключиц/подбородка).',
+                    'Разведение локтей строго назад за линию тела.'
+                ]
+            },
+            {
+                id: 'bicep-curl',
+                titleRu: 'Подъем штанги / гантелей на бицепс стоя',
+                titleEn: 'Standing Bicep Curl',
+                category: 'arms',
+                categoryName: 'Руки',
+                equipment: 'EZ-штанга или гантели',
+                difficulty: 'Изоляция',
+                animationType: 'curl',
+                primaryMuscle: 'Двуглавая мышца плеча (бицепс) и плечевая мышца (брахиалис)',
+                secondaryMuscles: ['Мышцы предплечья (плечелучевая)', 'Передняя дельта (стабилизатор)'],
+                activeSvgZones: {
+                    primary: ['biceps'],
+                    secondary: ['forearms', 'shoulders']
+                },
+                steps: {
+                    setup: 'Встаньте прямо, стопы на ширине плеч. Прижмите локти к бокам корпуса, лопатки опущены и зафиксированы.',
+                    movement: 'За счет сокращения бицепса сгибайте руки в локтевых суставах по дуге вверх, не уводя локти вперед или назад.',
+                    peak: 'В верхней точке сделайте паузу 1 секунду на пиковом сокращении бицепса (при работе с гантелями добавьте супинацию кисти).',
+                    returnPhase: 'Медленно (2–3 секунды) разгибайте руки до почти полного выпрямления, сохраняя натяжение в мышце.'
+                },
+                breathing: {
+                    inhale: 'Плавный вдох при опускании веса вниз.',
+                    exhale: 'Выдох при сгибании рук и пиковом сокращении.'
+                },
+                mistakes: [
+                    'Читинг корпусом и заброс веса за счет разгибания поясницы и раскачки.',
+                    'Выведение локтей высоко вперед в верхней точке — нагрузка уходит с бицепса в переднюю дельту.',
+                    'Бросание веса вниз без контроля негативной (эксцентрической) фазы.'
+                ]
+            },
+            {
+                id: 'hanging-leg-raise',
+                titleRu: 'Подъем ног в висе на перекладине / скручивания кора',
+                titleEn: 'Hanging Leg Raise & Core Crunch',
+                category: 'core',
+                categoryName: 'Пресс / Кор',
+                equipment: 'Турник / Собственный вес',
+                difficulty: 'Средний',
+                animationType: 'crunch',
+                primaryMuscle: 'Прямая мышца живота (особенно нижний сегмент) и наружные косые',
+                secondaryMuscles: ['Подвздошно-поясничная мышца', 'Передняя поверхность бедра', 'Мышцы хвата и широчайшие'],
+                activeSvgZones: {
+                    primary: ['abs'],
+                    secondary: ['quads', 'forearms', 'lats']
+                },
+                steps: {
+                    setup: 'Повисните на перекладине прямым хватом, активируйте плечевой пояс (не висите на расслабленных связках) и слегка подкрутите таз.',
+                    movement: 'Плавно поднимайте ноги вверх, обязательно подкручивая таз к грудной клетке (сгибание позвоночника, а не только бедер).',
+                    peak: 'В верхней точке колени приближены к груди, таз подкручен вверх, пресс максимально сокращен на 1 секунду.',
+                    returnPhase: 'Медленно опустите ноги вниз без маятниковой раскачки корпуса.'
+                },
+                breathing: {
+                    inhale: 'Вдох в нижней точке при контролируемом опускании ног.',
+                    exhale: 'Полный мощный выдох в момент скручивания таза вверх (позволяет сильнее сократить прямую мышцу живота).'
+                },
+                mistakes: [
+                    'Подъем прямых ног только до 90° с неподвижным тазом — работают подвздошно-поясничные сгибатели бедра, а не пресс.',
+                    'Использование маятниковой раскачки (киппинга) для заброса ног вверх.',
+                    'Задержка дыхания вместо полного выдоха на пике сокращения.'
+                ]
+            }
+        ];
+
+        /* =========================================================================
+           2. СОСТОЯНИЕ ПРИЛОЖЕНИЯ И ГЕНЕРАЦИЯ SVG-АНАТОМИИ И БИОМЕХАНИКИ
+           ========================================================================= */
+        let currentCategory = 'all';
+        let searchQuery = '';
+        let cardViewMode = 'biomech'; // 'biomech' или 'anatomy'
+        let activeExercise = null;
+
+        // Генерация анатомической SVG-карты (вид спереди + вид сзади) с подсветкой целевых групп
+        function generateAnatomySVG(activeZones, compact = false) {
+            const p = activeZones.primary || [];
+            const s = activeZones.secondary || [];
+
+            const getClass = (zone) => {
+                if (p.includes(zone)) return 'muscle-primary';
+                if (s.includes(zone)) return 'muscle-secondary';
+                return 'muscle-inactive';
+            };
+
+            return `
+            <svg viewBox="0 0 240 200" class="w-full h-full select-none">
+                <!-- Подписи -->
+                <text x="58" y="14" text-anchor="middle" fill="#6B7280" font-size="8" font-family="JetBrains Mono">FRONT</text>
+                <text x="182" y="14" text-anchor="middle" fill="#6B7280" font-size="8" font-family="JetBrains Mono">BACK</text>
+                <line x1="120" y1="15" x2="120" y2="188" stroke="#1F2937" stroke-dasharray="3 3" stroke-width="1"/>
+
+                <!-- ================= ВИД СПЕРЕДИ (FRONT) ================= -->
+                <g transform="translate(8, 12)">
+                    <!-- Голова и шея -->
+                    <circle cx="50" cy="18" r="10" fill="#2A303C"/>
+                    <rect x="46" y="27" width="8" height="6" rx="2" fill="#2A303C"/>
+                    <!-- Трапеции спереди -->
+                    <path d="M36 33 L46 29 L54 29 L64 33 Z" class="${getClass('traps')}"/>
+                    <!-- Плечи (Дельты) -->
+                    <path d="M23 35 Q30 30 37 34 L35 50 Q24 47 23 35 Z" class="${getClass('shoulders')}"/>
+                    <path d="M77 35 Q70 30 63 34 L65 50 Q76 47 77 35 Z" class="${getClass('shoulders')}"/>
+                    <!-- Грудь (Pectorals) -->
+                    <path d="M36 34 L49 34 L49 54 L34 50 Z" rx="3" class="${getClass('chest')}"/>
+                    <path d="M64 34 L51 34 L51 54 L66 50 Z" rx="3" class="${getClass('chest')}"/>
+                    <!-- Бицепс -->
+                    <rect x="21" y="51" width="10" height="22" rx="5" class="${getClass('biceps')}"/>
+                    <rect x="69" y="51" width="10" height="22" rx="5" class="${getClass('biceps')}"/>
+                    <!-- Предплечья -->
+                    <rect x="18" y="75" width="9" height="22" rx="4" class="${getClass('forearms')}"/>
+                    <rect x="73" y="75" width="9" height="22" rx="4" class="${getClass('forearms')}"/>
+                    <!-- Пресс и Кор (Abs) -->
+                    <rect x="38" y="56" width="10.5" height="10" rx="2" class="${getClass('abs')}"/>
+                    <rect x="51.5" y="56" width="10.5" height="10" rx="2" class="${getClass('abs')}"/>
+                    <rect x="38" y="68" width="10.5" height="10" rx="2" class="${getClass('abs')}"/>
+                    <rect x="51.5" y="68" width="10.5" height="10" rx="2" class="${getClass('abs')}"/>
+                    <rect x="39" y="80" width="10" height="11" rx="2" class="${getClass('abs')}"/>
+                    <rect x="51" y="80" width="10" height="11" rx="2" class="${getClass('abs')}"/>
+                    <!-- Квадрицепс (Quads) -->
+                    <path d="M34 94 L48 94 L46 135 L33 135 Z" class="${getClass('quads')}"/>
+                    <path d="M66 94 L52 94 L54 135 L67 135 Z" class="${getClass('quads')}"/>
+                    <!-- Голени -->
+                    <rect x="34" y="139" width="10" height="32" rx="4" fill="#222731"/>
+                    <rect x="56" y="139" width="10" height="32" rx="4" fill="#222731"/>
+                </g>
+
+                <!-- ================= ВИД СЗАДИ (BACK) ================= -->
+                <g transform="translate(132, 12)">
+                    <!-- Голова -->
+                    <circle cx="50" cy="18" r="10" fill="#2A303C"/>
+                    <!-- Трапеции (Traps) -->
+                    <polygon points="35,33 50,27 65,33 50,55" class="${getClass('traps')}"/>
+                    <!-- Задние дельты -->
+                    <path d="M23 35 Q30 30 36 34 L35 49 Q24 47 23 35 Z" class="${getClass('shoulders')}"/>
+                    <path d="M77 35 Q70 30 64 34 L65 49 Q76 47 77 35 Z" class="${getClass('shoulders')}"/>
+                    <!-- Широчайшие (Lats) -->
+                    <polygon points="34,47 48,55 47,78 37,72" class="${getClass('lats')}"/>
+                    <polygon points="66,47 52,55 53,78 63,72" class="${getClass('lats')}"/>
+                    <!-- Трицепс -->
+                    <rect x="21" y="51" width="10" height="22" rx="5" class="${getClass('triceps')}"/>
+                    <rect x="69" y="51" width="10" height="22" rx="5" class="${getClass('triceps')}"/>
+                    <!-- Предплечья -->
+                    <rect x="18" y="75" width="9" height="22" rx="4" class="${getClass('forearms')}"/>
+                    <rect x="73" y="75" width="9" height="22" rx="4" class="${getClass('forearms')}"/>
+                    <!-- Поясница (Lower Back) -->
+                    <rect x="40" y="76" width="20" height="15" rx="3" class="${getClass('lowerback')}"/>
+                    <!-- Ягодицы (Glutes) -->
+                    <rect x="34" y="92" width="15" height="16" rx="6" class="${getClass('glutes')}"/>
+                    <rect x="51" y="92" width="15" height="16" rx="6" class="${getClass('glutes')}"/>
+                    <!-- Бицепс бедра (Hamstrings) -->
+                    <rect x="34" y="110" width="13" height="26" rx="4" class="${getClass('hamstrings')}"/>
+                    <rect x="53" y="110" width="13" height="26" rx="4" class="${getClass('hamstrings')}"/>
+                    <!-- Икры -->
+                    <rect x="35" y="139" width="10" height="32" rx="4" fill="#222731"/>
+                    <rect x="55" y="139" width="10" height="32" rx="4" fill="#222731"/>
+                </g>
+            </svg>`;
+        }
+
+        // Генерация зацикленной векторной 3D-стилизованной анимации упражнения для карточки
+        function generateBiomechPreviewSVG(exercise) {
+            const type = exercise.animationType;
+            
+            // Изометрическая сетка пола для глубины 3D-сцены
+            const gridBg = `
+                <polygon points="120,145 215,170 120,195 25,170" fill="rgba(255,255,255,0.02)" stroke="rgba(204,255,0,0.22)" stroke-width="1"/>
+                <line x1="72" y1="157" x2="167" y2="182" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+                <line x1="167" y1="157" x2="72" y2="182" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+            `;
+
+            if (type === 'bench' || type === 'incline') {
+                return `
+                <svg viewBox="0 0 240 200" class="w-full h-full">
+                    ${gridBg}
+                    <!-- Скамья -->
+                    <rect x="65" y="125" width="110" height="10" rx="3" fill="#2A303C" stroke="#4B5563" stroke-width="1"/>
+                    <rect x="80" y="135" width="8" height="35" fill="#1F2937"/>
+                    <rect x="152" y="135" width="8" height="35" fill="#1F2937"/>
+                    <!-- Торс атлета с подсвеченной грудью -->
+                    <rect x="85" y="110" width="60" height="15" rx="6" fill="#FF2A5F" class="muscle-primary"/>
+                    <circle cx="73" cy="116" r="9" fill="#9CA3AF"/>
+                    <!-- Ноги -->
+                    <path d="M145 117 L168 117 L174 165" stroke="#4B5563" stroke-width="9" stroke-linecap="round" fill="none"/>
+                    <!-- Анимированная штанга и руки -->
+                    <g class="anim-bench">
+                        <line x1="100" y1="68" x2="100" y2="114" stroke="#FFB800" stroke-width="7" stroke-linecap="round"/>
+                        <line x1="45" y1="68" x2="195" y2="68" stroke="#E5E7EB" stroke-width="4" stroke-linecap="round"/>
+                        <rect x="52" y="50" width="8" height="36" rx="2" fill="#00F0FF"/>
+                        <rect x="180" y="50" width="8" height="36" rx="2" fill="#00F0FF"/>
+                    </g>
+                </svg>`;
+            }
+
+            if (type === 'squat' || type === 'rdl') {
+                return `
+                <svg viewBox="0 0 240 200" class="w-full h-full">
+                    ${gridBg}
+                    <!-- Голени -->
+                    <line x1="105" y1="170" x2="105" y2="130" stroke="#6B7280" stroke-width="8" stroke-linecap="round"/>
+                    <line x1="135" y1="170" x2="135" y2="130" stroke="#6B7280" stroke-width="8" stroke-linecap="round"/>
+                    <!-- Приседающая часть -->
+                    <g class="anim-squat">
+                        <!-- Бедра и ягодицы (целевая подсветка) -->
+                        <line x1="105" y1="130" x2="95" y2="105" stroke="#FF2A5F" stroke-width="11" stroke-linecap="round" class="muscle-primary"/>
+                        <line x1="135" y1="130" x2="145" y2="105" stroke="#FF2A5F" stroke-width="11" stroke-linecap="round" class="muscle-primary"/>
+                        <!-- Корпус -->
+                        <rect x="102" y="62" width="36" height="44" rx="8" fill="#FFB800" class="muscle-secondary"/>
+                        <circle cx="120" cy="46" r="10" fill="#9CA3AF"/>
+                        <!-- Штанга на плечах -->
+                        <line x1="45" y1="62" x2="195" y2="62" stroke="#E5E7EB" stroke-width="4"/>
+                        <rect x="52" y="44" width="9" height="36" rx="2" fill="#CCFF00"/>
+                        <rect x="179" y="44" width="9" height="36" rx="2" fill="#CCFF00"/>
+                    </g>
+                </svg>`;
+            }
+
+            if (type === 'pulldown' || type === 'row') {
+                return `
+                <svg viewBox="0 0 240 200" class="w-full h-full">
+                    ${gridBg}
+                    <!-- Рама блока -->
+                    <line x1="120" y1="20" x2="120" y2="170" stroke="#1F2937" stroke-width="4"/>
+                    <!-- Спина атлета (V-образные широчайшие) -->
+                    <polygon points="92,82 148,82 134,132 106,132" fill="#FF2A5F" class="muscle-primary"/>
+                    <circle cx="120" cy="66" r="10" fill="#9CA3AF"/>
+                    <!-- Анимированная рукоять и руки -->
+                    <g class="anim-bench">
+                        <line x1="65" y1="42" x2="175" y2="42" stroke="#00F0FF" stroke-width="5" stroke-linecap="round"/>
+                        <line x1="75" y1="42" x2="95" y2="85" stroke="#FFB800" stroke-width="7" stroke-linecap="round"/>
+                        <line x1="165" y1="42" x2="145" y2="85" stroke="#FFB800" stroke-width="7" stroke-linecap="round"/>
+                    </g>
+                </svg>`;
+            }
+
+            // Плечи / Руки / Кор
+            return `
+            <svg viewBox="0 0 240 200" class="w-full h-full">
+                ${gridBg}
+                <!-- Ноги и корпус -->
+                <line x1="108" y1="125" x2="108" y2="170" stroke="#4B5563" stroke-width="8" stroke-linecap="round"/>
+                <line x1="132" y1="125" x2="132" y2="170" stroke="#4B5563" stroke-width="8" stroke-linecap="round"/>
+                <rect x="100" y="74" width="40" height="52" rx="8" fill="${type === 'crunch' ? '#FF2A5F' : '#374151'}" class="${type === 'crunch' ? 'muscle-primary' : ''}"/>
+                <circle cx="120" cy="56" r="10" fill="#9CA3AF"/>
+                <!-- Плечи и руки с весом -->
+                <circle cx="94" cy="80" r="9" fill="#FF2A5F" class="muscle-primary"/>
+                <circle cx="146" cy="80" r="9" fill="#FF2A5F" class="muscle-primary"/>
+                <g class="anim-bench">
+                    <line x1="90" y1="80" x2="78" y2="46" stroke="#FFB800" stroke-width="7" stroke-linecap="round"/>
+                    <line x1="150" y1="80" x2="162" y2="46" stroke="#FFB800" stroke-width="7" stroke-linecap="round"/>
+                    <rect x="64" y="38" width="28" height="9" rx="3" fill="#CCFF00"/>
+                    <rect x="148" y="38" width="28" height="9" rx="3" fill="#CCFF00"/>
+                </g>
+            </svg>`;
+        }
+
+        /* =========================================================================
+           3. РЕНДЕРИНГ ФИЛЬТРОВ И КАРТОЧЕК КАТАЛОГА
+           ========================================================================= */
+        function renderFilters() {
+            const container = document.getElementById('filterContainer');
+            container.innerHTML = categories.map(cat => {
+                const isActive = cat.id === currentCategory;
+                const count = cat.id === 'all' 
+                    ? exercises.length 
+                    : exercises.filter(e => e.category === cat.id).length;
+
+                return `
+                    <button 
+                        onclick="selectCategory('${cat.id}')"
+                        class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 border ${
+                            isActive 
+                            ? 'bg-neon-lime text-dark-950 border-neon-lime shadow-[0_0_20px_rgba(204,255,0,0.3)]' 
+                            : 'bg-dark-850 text-gray-300 border-white/10 hover:border-white/30 hover:text-white'
+                        }"
+                    >
+                        <span>${cat.name}</span>
+                        <span class="px-1.5 py-0.5 rounded-md text-[11px] font-mono ${
+                            isActive ? 'bg-dark-950/20 text-dark-950 font-bold' : 'bg-white/5 text-gray-400'
+                        }">${count}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function getFilteredExercises() {
+            return exercises.filter(ex => {
+                const matchesCat = currentCategory === 'all' || ex.category === currentCategory;
+                const q = searchQuery.trim().toLowerCase();
+                const matchesSearch = !q || 
+                    ex.titleRu.toLowerCase().includes(q) || 
+                    ex.titleEn.toLowerCase().includes(q) ||
+                    ex.primaryMuscle.toLowerCase().includes(q);
+                return matchesCat && matchesSearch;
+            });
+        }
+
+        function renderExercises() {
+            const filtered = getFilteredExercises();
+            const grid = document.getElementById('exercisesGrid');
+            const emptyState = document.getElementById('emptyState');
+            const countEl = document.getElementById('exerciseCount');
+
+            countEl.textContent = filtered.length;
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            grid.innerHTML = filtered.map(ex => {
+                const visualSvg = cardViewMode === 'biomech' 
+                    ? generateBiomechPreviewSVG(ex) 
+                    : generateAnatomySVG(ex.activeSvgZones, true);
+
+                return `
+                <article 
+                    onclick="openExerciseModal('${ex.id}')"
+                    class="group cursor-pointer bg-dark-850 border border-white/10 rounded-2xl overflow-hidden flex flex-col card-glow"
+                >
+                    <!-- Область визуализации -->
+                    <div class="relative h-48 bg-dark-950 border-b border-white/5 p-3 flex items-center justify-center overflow-hidden">
+                        <!-- Категория и бейдж 3D -->
+                        <div class="absolute top-3 left-3 right-3 flex items-center justify-between z-10">
+                            <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-neon-lime text-dark-950 shadow">
+                                ${ex.categoryName}
+                            </span>
+                            <span class="px-2 py-0.5 rounded bg-dark-900/90 border border-white/10 text-[10px] font-mono text-neon-cyan">
+                                3D + ANATOMY
+                            </span>
+                        </div>
+
+                        <!-- Визуализация (3D-движение или Карта мышц) -->
+                        <div class="w-full h-full pt-4 transition-transform duration-500 group-hover:scale-105">
+                            ${visualSvg}
+                        </div>
+
+                        <!-- Индикатор при наведении -->
+                        <div class="absolute bottom-2.5 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-neon-lime text-dark-950 text-[11px] font-bold px-2.5 py-1 rounded-lg shadow">
+                            Открыть 3D →
+                        </div>
+                    </div>
+
+                    <!-- Контент карточки -->
+                    <div class="p-4 flex-1 flex flex-col justify-between gap-4">
+                        <div>
+                            <p class="text-[11px] font-mono text-gray-400 mb-0.5">${ex.titleEn}</p>
+                            <h3 class="text-base font-bold text-white group-hover:text-neon-lime transition-colors leading-snug">
+                                ${ex.titleRu}
+                            </h3>
+                        </div>
+
+                        <!-- Мышечные группы -->
+                        <div class="space-y-2.5 pt-2 border-t border-white/5 text-xs">
+                            <div>
+                                <span class="text-gray-400 block text-[11px] mb-1">Целевая мышца (Primary):</span>
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neon-red/15 border border-neon-red/40 text-rose-200 font-medium">
+                                    <span class="w-2 h-2 rounded-full bg-neon-red animate-pulse"></span>
+                                    ${ex.primaryMuscle}
+                                </span>
+                            </div>
+
+                            <div>
+                                <span class="text-gray-400 block text-[11px] mb-1">Синергисты (Secondary):</span>
+                                <div class="flex flex-wrap gap-1.5">
+                                    ${ex.secondaryMuscles.map(m => `
+                                        <span class="px-2 py-0.5 rounded-md bg-dark-900 border border-white/10 text-gray-300 text-[11px]">
+                                            ${m}
+                                        </span>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                `;
+            }).join('');
+        }
+
+        function selectCategory(catId) {
+            currentCategory = catId;
+            renderFilters();
+            renderExercises();
+        }
+
+        function setCardViewMode(mode) {
+            cardViewMode = mode;
+            const btnBio = document.getElementById('viewModeBiomech');
+            const btnAna = document.getElementById('viewModeAnatomy');
+
+            if (mode === 'biomech') {
+                btnBio.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-neon-lime text-dark-950 shadow-sm';
+                btnAna.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-gray-400 hover:text-white';
+            } else {
+                btnAna.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-neon-lime text-dark-950 shadow-sm';
+                btnBio.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-gray-400 hover:text-white';
+            }
+            renderExercises();
+        }
+
+        function resetFilters() {
+            currentCategory = 'all';
+            searchQuery = '';
+            document.getElementById('searchInput').value = '';
+            document.getElementById('clearSearchBtn').classList.add('hidden');
+            renderFilters();
+            renderExercises();
+        }
+
+        /* =========================================================================
+           4. ИНТЕРАКТИВНЫЙ THREE.JS 3D-СИМУЛЯТОР УПРАЖНЕНИЙ С ПОДСВЕТКОЙ МЫШЦ
+           ========================================================================= */
+        let scene, camera, renderer, animFrameId;
+        let mannequin = {};
+        let is3DPlaying = true;
+        let animSpeed = 1.0;
+        let clockRadius = 0;
+
+        // Управление вращением камеры мышью / тачем
+        let isDragging = false;
+        let prevMouse = { x: 0, y: 0 };
+        let cameraAngle = { theta: 0.6, phi: 1.25, distance: 4.3 };
+
+        function initThreeJS() {
+            const container = document.getElementById('threeContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x07080A);
+
+            const width = container.clientWidth || 400;
+            const height = container.clientHeight || 300;
+
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Освещение
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xccff00, 0.9);
+            dirLight.position.set(4, 7, 5);
+            scene.add(dirLight);
+
+            const rimLight = new THREE.DirectionalLight(0x00f0ff, 0.6);
+            rimLight.position.set(-5, 3, -4);
+            scene.add(rimLight);
+
+            // Неоновая сетка пола
+            const gridHelper = new THREE.GridHelper(6, 12, 0xccff00, 0x1f2937);
+            gridHelper.position.y = -1.35;
+            scene.add(gridHelper);
+
+            // Обработчики вращения мышью и пальцем
+            const dom = renderer.domElement;
+            dom.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                prevMouse = { x: e.clientX, y: e.clientY };
+            });
+            window.addEventListener('mouseup', () => isDragging = false);
+            window.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - prevMouse.x;
+                const dy = e.clientY - prevMouse.y;
+                prevMouse = { x: e.clientX, y: e.clientY };
+                cameraAngle.theta -= dx * 0.01;
+                cameraAngle.phi = Math.max(0.4, Math.min(1.65, cameraAngle.phi - dy * 0.01));
+                updateCameraPosition();
+            });
+
+            dom.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isDragging = true;
+                    prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+            }, { passive: true });
+            window.addEventListener('touchend', () => isDragging = false);
+            window.addEventListener('touchmove', (e) => {
+                if (!isDragging || e.touches.length !== 1) return;
+                const dx = e.touches[0].clientX - prevMouse.x;
+                const dy = e.touches[0].clientY - prevMouse.y;
+                prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                cameraAngle.theta -= dx * 0.01;
+                cameraAngle.phi = Math.max(0.4, Math.min(1.65, cameraAngle.phi - dy * 0.01));
+                updateCameraPosition();
+            }, { passive: true });
+        }
+
+        function updateCameraPosition() {
+            if (!camera) return;
+            camera.position.x = cameraAngle.distance * Math.sin(cameraAngle.phi) * Math.sin(cameraAngle.theta);
+            camera.position.y = cameraAngle.distance * Math.cos(cameraAngle.phi);
+            camera.position.z = cameraAngle.distance * Math.sin(cameraAngle.phi) * Math.cos(cameraAngle.theta);
+            camera.lookAt(0, 0, 0);
+        }
+
+        function setCameraPreset(preset) {
+            if (preset === 'front') cameraAngle = { theta: 0, phi: 1.35, distance: 4.3 };
+            if (preset === 'side') cameraAngle = { theta: Math.PI / 2, phi: 1.35, distance: 4.3 };
+            if (preset === 'iso') cameraAngle = { theta: 0.65, phi: 1.2, distance: 4.3 };
+            updateCameraPosition();
+        }
+
+        // Создание 3D-манекена человека и инвентаря с подсветкой целевых мышц
+        function buildExercise3DModel(exercise) {
+            if (!scene) initThreeJS();
+
+            // Удаляем предыдущий манекен
+            if (mannequin.root) {
+                scene.remove(mannequin.root);
+            }
+
+            const pZones = exercise.activeSvgZones.primary || [];
+            const sZones = exercise.activeSvgZones.secondary || [];
+
+            const getMat = (zoneName) => {
+                if (pZones.includes(zoneName)) {
+                    return new THREE.MeshStandardMaterial({
+                        color: 0xff2a5f,
+                        emissive: 0xff1e56,
+                        emissiveIntensity: 0.55,
+                        roughness: 0.3
+                    });
+                }
+                if (sZones.includes(zoneName)) {
+                    return new THREE.MeshStandardMaterial({
+                        color: 0xffb800,
+                        emissive: 0xff9900,
+                        emissiveIntensity: 0.3,
+                        roughness: 0.4
+                    });
+                }
+                return new THREE.MeshStandardMaterial({
+                    color: 0x2b3240,
+                    roughness: 0.6,
+                    metalness: 0.2
+                });
+            };
+
+            const equipMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.8, roughness: 0.2 });
+            const plateMat = new THREE.MeshStandardMaterial({ color: 0xccff00, emissive: 0xccff00, emissiveIntensity: 0.2 });
+            const benchMat = new THREE.MeshStandardMaterial({ color: 0x161920, roughness: 0.8 });
+
+            const root = new THREE.Group();
+            const bodyGroup = new THREE.Group();
+            root.add(bodyGroup);
+
+            // Торс (грудь + спина + пресс)
+            const chestMesh = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.52, 0.34), getMat(pZones.includes('lats') ? 'lats' : 'chest'));
+            chestMesh.position.y = 0.45;
+            bodyGroup.add(chestMesh);
+
+            const absMesh = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.42, 0.28), getMat('abs'));
+            absMesh.position.y = 0.0;
+            bodyGroup.add(absMesh);
+
+            // Голова
+            const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.21, 20, 20), getMat('neutral'));
+            headMesh.position.y = 0.92;
+            bodyGroup.add(headMesh);
+
+            // Плечи и Руки
+            const leftArmGroup = new THREE.Group();
+            leftArmGroup.position.set(-0.46, 0.62, 0);
+            const leftShoulder = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), getMat('shoulders'));
+            const leftUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.48, 12), getMat(pZones.includes('biceps') ? 'biceps' : 'triceps'));
+            leftUpperArm.position.y = -0.24;
+            leftArmGroup.add(leftShoulder, leftUpperArm);
+
+            const rightArmGroup = new THREE.Group();
+            rightArmGroup.position.set(0.46, 0.62, 0);
+            const rightShoulder = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), getMat('shoulders'));
+            const rightUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.48, 12), getMat(pZones.includes('biceps') ? 'biceps' : 'triceps'));
+            rightUpperArm.position.y = -0.24;
+            rightArmGroup.add(rightShoulder, rightUpperArm);
+
+            bodyGroup.add(leftArmGroup, rightArmGroup);
+
+            // Бедра и Ноги
+            const pelvisMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.24, 0.32), getMat('glutes'));
+            pelvisMesh.position.y = -0.3;
+            bodyGroup.add(pelvisMesh);
+
+            const leftThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.56, 12), getMat(pZones.includes('hamstrings') ? 'hamstrings' : 'quads'));
+            leftThigh.position.set(-0.18, -0.68, 0);
+            const rightThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.56, 12), getMat(pZones.includes('hamstrings') ? 'hamstrings' : 'quads'));
+            rightThigh.position.set(0.18, -0.68, 0);
+            bodyGroup.add(leftThigh, rightThigh);
+
+            const leftCalf = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.5, 12), getMat('neutral'));
+            leftCalf.position.set(-0.18, -1.12, 0);
+            const rightCalf = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.5, 12), getMat('neutral'));
+            rightCalf.position.set(0.18, -1.12, 0);
+            root.add(leftCalf, rightCalf);
+
+            // Штанга / Гантели
+            const barbellGroup = new THREE.Group();
+            const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.1, 12), equipMat);
+            bar.rotation.z = Math.PI / 2;
+            const plateL = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.08, 20), plateMat);
+            plateL.rotation.z = Math.PI / 2;
+            plateL.position.x = -0.82;
+            const plateR = plateL.clone();
+            plateR.position.x = 0.82;
+            barbellGroup.add(bar, plateL, plateR);
+            root.add(barbellGroup);
+
+            // Скамья для жима лежа
+            if (exercise.animationType === 'bench' || exercise.animationType === 'incline') {
+                const bench = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.12, 1.8), benchMat);
+                bench.position.set(0, -0.45, -0.1);
+                root.add(bench);
+                bodyGroup.rotation.x = exercise.animationType === 'incline' ? -1.1 : -Math.PI / 2;
+                bodyGroup.position.set(0, -0.25, 0.1);
+            }
+
+            scene.add(root);
+
+            mannequin = {
+                root,
+                bodyGroup,
+                leftArmGroup,
+                rightArmGroup,
+                leftThigh,
+                rightThigh,
+                barbellGroup,
+                type: exercise.animationType,
+                primaryMeshes: [chestMesh, absMesh, leftShoulder, rightShoulder, leftUpperArm, rightUpperArm, pelvisMesh, leftThigh, rightThigh]
+            };
+        }
+
+        function animate3DLoop() {
+            animFrameId = requestAnimationFrame(animate3DLoop);
+
+            if (is3DPlaying && mannequin.root) {
+                clockRadius += 0.04 * animSpeed;
+                const s = (Math.sin(clockRadius) + 1) / 2; // от 0 до 1
+
+                const t = mannequin.type;
+
+                if (t === 'bench' || t === 'incline') {
+                    // Жим лежа: штанга и руки поднимаются и опускаются
+                    mannequin.barbellGroup.position.set(0, 0.22 + s * 0.48, 0.25);
+                    mannequin.leftArmGroup.rotation.x = 1.2 + s * 0.4;
+                    mannequin.rightArmGroup.rotation.x = 1.2 + s * 0.4;
+                } else if (t === 'squat') {
+                    // Приседания со штангой
+                    const drop = -s * 0.42;
+                    mannequin.bodyGroup.position.y = drop;
+                    mannequin.bodyGroup.rotation.x = s * 0.25;
+                    mannequin.barbellGroup.position.set(0, 0.72 + drop, -0.12);
+                    mannequin.leftArmGroup.rotation.z = 0.5;
+                    mannequin.rightArmGroup.rotation.z = -0.5;
+                } else if (t === 'rdl' || t === 'row') {
+                    // Наклон корпуса (Румынская тяга / тяга в наклоне)
+                    mannequin.bodyGroup.rotation.x = 0.2 + s * 0.75;
+                    mannequin.barbellGroup.position.set(0, -0.15 - s * 0.45, 0.32);
+                    mannequin.leftArmGroup.rotation.x = -0.6;
+                    mannequin.rightArmGroup.rotation.x = -0.6;
+                } else if (t === 'pulldown' || t === 'ohp') {
+                    // Вертикальный жим / тяга сверху
+                    mannequin.barbellGroup.position.set(0, 0.75 + s * 0.55, 0.15);
+                    mannequin.leftArmGroup.rotation.x = 2.5 + s * 0.55;
+                    mannequin.rightArmGroup.rotation.x = 2.5 + s * 0.55;
+                } else {
+                    // Подъем на бицепс / скручивания
+                    mannequin.barbellGroup.position.set(0, -0.05 + s * 0.48, 0.32);
+                    mannequin.leftArmGroup.rotation.x = -0.4 - s * 1.1;
+                    mannequin.rightArmGroup.rotation.x = -0.4 - s * 1.1;
+                }
+            }
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        function toggle3DPlayback() {
+            is3DPlaying = !is3DPlaying;
+            const btn = document.getElementById('toggle3dPlayBtn');
+            btn.textContent = is3DPlaying ? 'Пауза' : 'Пуск';
+        }
+
+        function set3DSpeed(speed) {
+            animSpeed = speed;
+            document.getElementById('speedSlowBtn').className = speed === 0.5 
+                ? 'px-2 py-1 rounded-lg bg-white/15 text-white text-xs font-mono transition'
+                : 'px-2 py-1 rounded-lg bg-dark-800 text-gray-300 hover:text-white text-xs font-mono transition';
+            document.getElementById('speedNormBtn').className = speed === 1 
+                ? 'px-2 py-1 rounded-lg bg-white/15 text-white text-xs font-mono transition'
+                : 'px-2 py-1 rounded-lg bg-dark-800 text-gray-300 hover:text-white text-xs font-mono transition';
+        }
+
+        /* =========================================================================
+           5. МОДАЛЬНОЕ ОКНО: ОТКРЫТИЕ, ЗАПОЛНЕНИЕ ДАННЫХ И ЗАКРЫТИЕ
+           ========================================================================= */
+        function openExerciseModal(id) {
+            const ex = exercises.find(item => item.id === id);
+            if (!ex) return;
+            activeExercise = ex;
+
+            // Заголовки и бейджи
+            document.getElementById('modalCategoryBadge').textContent = ex.categoryName;
+            document.getElementById('modalTitleRu').textContent = ex.titleRu;
+            document.getElementById('modalTitleEn').textContent = ex.titleEn;
+            document.getElementById('modalEquipment').textContent = ex.equipment;
+
+            // Мышцы и SVG-схема
+            document.getElementById('modalPrimaryMuscle').textContent = ex.primaryMuscle;
+            document.getElementById('modalSecondaryMuscles').innerHTML = ex.secondaryMuscles
+                .map(m => `<li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-neon-amber"></span>${m}</li>`)
+                .join('');
+            document.getElementById('modalAnatomySvg').innerHTML = generateAnatomySVG(ex.activeSvgZones);
+
+            // Пошаговая техника (4 фазы)
+            const phases = [
+                { label: '1. Исходное положение', text: ex.steps.setup },
+                { label: '2. Фаза движения', text: ex.steps.movement },
+                { label: '3. Пиковое сокращение', text: ex.steps.peak },
+                { label: '4. Возврат в И.П.', text: ex.steps.returnPhase }
+            ];
+            document.getElementById('modalSteps').innerHTML = phases.map(p => `
+                <div class="bg-dark-950/80 border border-white/5 rounded-xl p-3.5">
+                    <span class="text-xs font-mono font-semibold text-neon-lime block mb-1.5">${p.label}</span>
+                    <p class="text-xs sm:text-sm text-gray-300 leading-relaxed">${p.text}</p>
+                </div>
+            `).join('');
+
+            // Дыхание
+            document.getElementById('modalBreathIn').textContent = ex.breathing.inhale;
+            document.getElementById('modalBreathOut').textContent = ex.breathing.exhale;
+
+            // Частые ошибки
+            document.getElementById('modalMistakes').innerHTML = ex.mistakes.map(err => `
+                <li class="flex items-start gap-2.5 bg-dark-950/60 border border-white/5 rounded-xl p-3">
+                    <span class="text-neon-red font-bold mt-0.5">✕</span>
+                    <span>${err}</span>
+                </li>
+            `).join('');
+
+            // Показываем модальное окно
+            const modal = document.getElementById('exerciseModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+
+            // Инициализируем и запускаем 3D-модель
+            setTimeout(() => {
+                if (!renderer) {
+                    initThreeJS();
+                } else {
+                    const container = document.getElementById('threeContainer');
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                }
+                buildExercise3DModel(ex);
+                if (!animFrameId) animate3DLoop();
+            }, 60);
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('exerciseModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+
+        /* =========================================================================
+           6. ИНИЦИАЛИЗАЦИЯ И СОБЫТИЯ
+           ========================================================================= */
+        window.onload = function () {
+            renderFilters();
+            renderExercises();
+
+            // Поиск по названию
+            const searchInput = document.getElementById('searchInput');
+            const clearBtn = document.getElementById('clearSearchBtn');
+
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value;
+                clearBtn.classList.toggle('hidden', !searchQuery);
+                renderExercises();
+            });
+
+            clearBtn.addEventListener('click', () => {
+                searchQuery = '';
+                searchInput.value = '';
+                clearBtn.classList.add('hidden');
+                renderExercises();
+            });
+
+            // Закрытие модалки по клику на оверлей и по клавише Esc
+            const modal = document.getElementById('exerciseModal');
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeModal();
+            });
+
+            // Ресайз 3D-холста
+            window.addEventListener('resize', () => {
+                const container = document.getElementById('threeContainer');
+                if (renderer && camera && container && container.clientWidth > 0) {
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                }
+            });
+        };
+    </script>
+</body>
+</html>
